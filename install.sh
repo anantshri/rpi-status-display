@@ -13,10 +13,10 @@ sudo cp -r webroot/* "$WEBROOT/"
 sudo chmod +x "$INSTALL_DIR/collect.sh" "$INSTALL_DIR/rotate.sh"
 
 # Set up cron
-CRON_COLLECT="*/5 * * * * RPI_STATUS_DATA_DIR=$WEBROOT/data $INSTALL_DIR/collect.sh"
-CRON_ROTATE="0 0 * * * RPI_STATUS_DATA_DIR=$WEBROOT/data $INSTALL_DIR/rotate.sh"
+CRON_COLLECT="*/5 * * * * RPI_STATUS_DATA_DIR=$WEBROOT/data $INSTALL_DIR/collect.sh # rpi-status-collect"
+CRON_ROTATE="0 0 * * * RPI_STATUS_DATA_DIR=$WEBROOT/data $INSTALL_DIR/rotate.sh # rpi-status-rotate"
 
-(crontab -l 2>/dev/null | grep -v rpi-status; echo "$CRON_COLLECT"; echo "$CRON_ROTATE") | crontab -
+{ crontab -l 2>/dev/null | grep -v '# rpi-status-' || true; echo "$CRON_COLLECT"; echo "$CRON_ROTATE"; } | crontab -
 
 # Nginx config
 if [ -d /etc/nginx/sites-enabled ]; then
