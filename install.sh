@@ -18,12 +18,16 @@ CRON_ROTATE="0 0 * * * RPI_STATUS_DATA_DIR=$WEBROOT/data $INSTALL_DIR/rotate.sh 
 
 { crontab -l 2>/dev/null | grep -v '# rpi-status-' || true; echo "$CRON_COLLECT"; echo "$CRON_ROTATE"; } | crontab -
 
-# Nginx config
-if [ -d /etc/nginx/sites-enabled ]; then
-    sudo cp nginx.conf /etc/nginx/sites-available/rpi-status
-    sudo ln -sf /etc/nginx/sites-available/rpi-status /etc/nginx/sites-enabled/
-    sudo nginx -t && sudo systemctl reload nginx
-    echo "Nginx configured."
+# Nginx config (optional: pass --nginx to install)
+if [[ " $* " == *" --nginx "* ]]; then
+    if [ -d /etc/nginx/sites-enabled ]; then
+        sudo cp nginx.conf /etc/nginx/sites-available/rpi-status
+        sudo ln -sf /etc/nginx/sites-available/rpi-status /etc/nginx/sites-enabled/
+        sudo nginx -t && sudo systemctl reload nginx
+        echo "Nginx configured."
+    else
+        echo "Warning: /etc/nginx/sites-enabled not found, skipping nginx setup."
+    fi
 fi
 
 echo "Done. Dashboard at http://$(hostname -I | awk '{print $1}')"
