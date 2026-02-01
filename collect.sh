@@ -57,12 +57,17 @@ read -r disk_total disk_used <<< $(df -BG / | awk 'NR==2{gsub("G",""); printf "%
 
 # Docker disk usage (images + containers + volumes, in GB)
 if command -v docker &>/dev/null; then
-    docker_disk_gb=$(docker system df --format '{{.Size}}' 2>/dev/null | awk '
-        { s=$1; u="B"
-          if (match(s,/([0-9.]+)([kKmMgGtT]?[bB]?)/,a)) { v=a[1]; u=toupper(a[2]) }
-          else { v=s+0; u="B" }
-          if (u~/^G/) t+=v; else if (u~/^M/) t+=v/1024; else if (u~/^K/) t+=v/1048576; else if (u~/^T/) t+=v*1024; else t+=v/1073741824
-        } END{printf "%.1f", t}')
+    docker_disk_gb=$(docker system df --format '{{.Size}}' 2>/dev/null | while read -r line; do
+        num=$(echo "$line" | sed 's/[^0-9.]//g')
+        unit=$(echo "$line" | sed 's/[0-9. ]//g' | tr '[:lower:]' '[:upper:]')
+        case "$unit" in
+            GB|G) echo "$num" ;;
+            MB|M) echo "$num 1024" | awk '{printf "%.4f", $1/$2}' ;;
+            KB|K|KIB) echo "$num 1048576" | awk '{printf "%.4f", $1/$2}' ;;
+            TB|T) echo "$num 1024" | awk '{printf "%.4f", $1*$2}' ;;
+            *) echo "0" ;;
+        esac
+    done | awk '{t+=$1} END{printf "%.1f", t}')
     [ -z "$docker_disk_gb" ] && docker_disk_gb="0.0"
 else
     docker_disk_gb="0.0"
