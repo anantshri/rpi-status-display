@@ -19,17 +19,16 @@ fi
 
 timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-# CPU usage: average idle from /proc/stat snapshot (1-second sample)
-read -r _ u1 n1 s1 i1 _ < /proc/stat
-sleep 1
-read -r _ u2 n2 s2 i2 _ < /proc/stat
-idle=$(( i2 - i1 ))
-total=$(( (u2+n2+s2+i2) - (u1+n1+s1+i1) ))
-if [ "$total" -gt 0 ]; then
-    cpu_percent=$(( 100 * (total - idle) / total ))
-else
-    cpu_percent=0
-fi
+# CPU usage: snapshot /proc/stat, sleep 2s, snapshot again, compute with awk for precision
+read -r _ u1 n1 s1 i1 w1 q1 sq1 st1 _ < /proc/stat
+sleep 2
+read -r _ u2 n2 s2 i2 w2 q2 sq2 st2 _ < /proc/stat
+cpu_percent=$(awk "BEGIN {
+    idle = ($i2+$w2) - ($i1+$w1);
+    total = ($u2+$n2+$s2+$i2+$w2+$q2+$sq2+$st2) - ($u1+$n1+$s1+$i1+$w1+$q1+$sq1+$st1);
+    if (total > 0) printf \"%.1f\", 100 * (total - idle) / total;
+    else print \"0.0\";
+}")
 
 # Temperature (millidegrees on RPi)
 if [ -f /sys/class/thermal/thermal_zone0/temp ]; then
