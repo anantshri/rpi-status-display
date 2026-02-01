@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RPi Status</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: system-ui, sans-serif; background: #0f1117; color: #e0e0e0; padding: 1rem; }
+  h1 { text-align: center; margin-bottom: 1rem; font-size: 1.4rem; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%,500px), 1fr)); gap: 1rem; }
+  .card { background: #1a1d2e; border-radius: 8px; padding: 1rem; }
+  .card h2 { font-size: 0.9rem; margin-bottom: 0.5rem; color: #8888aa; }
+  canvas { width: 100% !important; }
+  #status { text-align: center; color: #666; margin-top: 1rem; font-size: 0.8rem; }
+  #error { text-align: center; color: #f44; display: none; margin-bottom: 1rem; }
+</style>
+</head>
+<body>
+<h1>Raspberry Pi Status</h1>
+<div id="error"></div>
+<div class="grid">
+  <div class="card"><h2>CPU Usage (%)</h2><canvas id="cpuChart"></canvas></div>
+  <div class="card"><h2>Temperature (&deg;C)</h2><canvas id="tempChart"></canvas></div>
+  <div class="card"><h2>Memory (MB)</h2><canvas id="memChart"></canvas></div>
+  <div class="card"><h2>Disk (GB)</h2><canvas id="diskChart"></canvas></div>
+  <div class="card"><h2>Load Average</h2><canvas id="loadChart"></canvas></div>
+</div>
+<div id="status">Loading&hellip;</div>
+
+<script>
+const DATA_URL = 'data/current.csv';
+const REFRESH_MS = 5 * 60 * 1000;
+
+const commonOpts = {
+  responsive: true,
+  animation: false,
+  plugins: { legend: { labels: { color: '#aaa', font: { size: 11 } } } },
+  scales: {
+    x: {
+      type: 'time',
+      time: { tooltipFormat: 'HH:mm', displayFormats: { minute: 'HH:mm', hour: 'HH:mm' } },
+      ticks: { color: '#666', maxTicksLimit: 12 },
+      grid: { color: '#222' }
+    },
+    y: { ticks: { color: '#666' }, grid: { color: '#222' } }
+  }
+};
+
+function makeChart(id, datasets, yOpts) {
+  const opts = JSON.parse(JSON.stringify(commonOpts));
+  if (yOpts) Object.assign(opts.scales.y, yOpts);
+  return new Chart(document.getElementById(id), {
+    type: 'line',
+    data: { datasets },
+    options: opts
+  });
+}
+
+function ds(label, color) {
+  return { label, borderColor: color, backgroundColor: color + '22', data: [], pointRadius: 0, borderWidth: 1.5, fill: true, tension: 0.3 };
+}
+
+const cpuDs = ds('CPU %', '#4fc3f7');
+const tempDs = ds('Temp', '#ff7043');
+const memTotalDs = ds('Total', '#66bb6a');
+const memUsedDs = ds('Used', '#ef5350');
+const diskTotalDs = ds('Total', '#66bb6a');
+const diskUsedDs = ds('Used', '#ffa726');
+const load1Ds = ds('1m', '#ab47bc');
+const load5Ds = ds('5m', '#7e57c2');
+const load15Ds = ds('15m', '#5c6bc0');
+
+const cpuChart = makeChart('cpuChart', [cpuDs], { min: 0, max: 100 });
+const tempChart = makeChart('tempChart', [tempDs]);
+const memChart = makeChart('memChart', [memTotalDs, memUsedDs], { min: 0 });
+const diskChart = makeChart('diskChart', [diskTotalDs, diskUsedDs], { min: 0 });
+const loadChart = makeChart('loadChart', [load1Ds, load5Ds, load15Ds], { min: 0 });
+
+function parseCSV(text) {
+  const lines = text.trim().split('\n');
+  if (lines.length < 2) return [];
+  return lines.slice(1).map(line => {
+    const p = line.split(',');
+    return {
+      t: new Date(p[0]),
+      cpu: +p[1], temp: +p[2],
+      memTotal: +p[3], memUsed: +p[4],
+      diskTotal: +p[5], diskUsed: +p[6],
+      load1: +p[7], load5: +p[8], load15: +p[9]
+    };
+  });
+}
+
+function updateCharts(rows) {
+  function pts(key) { return rows.map(r => ({ x: r.t, y: r[key] })); }
+  cpuDs.data = pts('cpu');
+  tempDs.data = pts('temp');
+  memTotalDs.data = pts('memTotal');
+  memUsedDs.data = pts('memUsed');
+  diskTotalDs.data = pts('diskTotal');
+  diskUsedDs.data = pts('diskUsed');
+  load1Ds.data = pts('load1');
+  load5Ds.data = pts('load5');
+  load15Ds.data = pts('load15');
+  [cpuChart, tempChart, memChart, diskChart, loadChart].forEach(c => c.update());
+}
+
+async function fetchData() {
+  try {
+    const res = await fetch(DATA_URL + '?_=' + Date.now());
+    if (!res.ok) throw new Error(res.status);
+    const rows = parseCSV(await res.text());
+    updateCharts(rows);
+    document.getElementById('error').style.display = 'none';
+    document.getElementById('status').textContent = 'Last updated: ' + new Date().toLocaleTimeString() + ' (' + rows.length + ' points)';
+  } catch (e) {
+    document.getElementById('error').textContent = 'Failed to load data: ' + e.message;
+    document.getElementById('error').style.display = 'block';
+  }
+}
+
+fetchData();
+setInterval(fetchData, REFRESH_MS);
+</script>
+</body>
+</html>
