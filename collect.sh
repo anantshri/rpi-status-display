@@ -6,7 +6,7 @@ set -euo pipefail
 
 DATA_DIR="${RPI_STATUS_DATA_DIR:-/var/www/local/data}"
 CSV_FILE="$DATA_DIR/current.csv"
-HEADER="timestamp,cpu_percent,temp_c,mem_total_mb,mem_used_mb,disk_total_gb,disk_used_gb,load_1m,load_5m,load_15m"
+HEADER="timestamp,cpu_percent,temp_c,fan_state,mem_total_mb,mem_used_mb,disk_total_gb,disk_used_gb,load_1m,load_5m,load_15m"
 
 mkdir -p "$DATA_DIR"
 
@@ -39,6 +39,13 @@ else
     temp_c="0.0"
 fi
 
+# Fan state
+if [ -f /sys/class/thermal/cooling_device0/cur_state ]; then
+    fan_state=$(cat /sys/class/thermal/cooling_device0/cur_state)
+else
+    fan_state=0
+fi
+
 # Memory (MB)
 read -r mem_total mem_available <<< $(awk '/^MemTotal:/{t=$2} /^MemAvailable:/{a=$2} END{printf "%d %d", t/1024, (t-a)/1024}' /proc/meminfo)
 mem_used=$mem_available  # variable is actually "used" from the awk
@@ -50,4 +57,4 @@ read -r disk_total disk_used <<< $(df -BG / | awk 'NR==2{gsub("G",""); printf "%
 read -r load_1m load_5m load_15m _ < /proc/loadavg
 
 # --- Append ---
-echo "$timestamp,$cpu_percent,$temp_c,$mem_total,$mem_used,$disk_total,$disk_used,$load_1m,$load_5m,$load_15m" >> "$CSV_FILE"
+echo "$timestamp,$cpu_percent,$temp_c,$fan_state,$mem_total,$mem_used,$disk_total,$disk_used,$load_1m,$load_5m,$load_15m" >> "$CSV_FILE"

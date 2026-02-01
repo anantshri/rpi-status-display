@@ -34,12 +34,14 @@
   <div class="stat"><div class="label">Temperature</div><div class="value" id="s-temp">--<span class="unit">&deg;C</span></div></div>
   <div class="stat"><div class="label">Memory</div><div class="value" id="s-mem">--<span class="unit">MB</span></div></div>
   <div class="stat"><div class="label">Disk</div><div class="value" id="s-disk">--<span class="unit">GB</span></div></div>
+  <div class="stat"><div class="label">Fan</div><div class="value" id="s-fan">--</div></div>
   <div class="stat"><div class="label">Load (1m)</div><div class="value" id="s-load">--</div></div>
 </div>
 
 <div class="grid">
   <div class="card"><h2>CPU Usage (%)</h2><canvas id="cpuChart"></canvas></div>
   <div class="card"><h2>Temperature (&deg;C)</h2><canvas id="tempChart"></canvas></div>
+  <div class="card"><h2>Fan State</h2><canvas id="fanChart"></canvas></div>
   <div class="card"><h2>Memory (MB)</h2><canvas id="memChart"></canvas></div>
   <div class="card"><h2>Disk (GB)</h2><canvas id="diskChart"></canvas></div>
   <div class="card"><h2>Load Average</h2><canvas id="loadChart"></canvas></div>
@@ -101,6 +103,7 @@ function ds(label, color) {
 
 const cpuDs = ds('CPU %', '#4fc3f7');
 const tempDs = ds('Temp', '#ff7043');
+const fanDs = ds('Fan', '#26c6da');
 const memTotalDs = ds('Total', '#66bb6a');
 const memUsedDs = ds('Used', '#ef5350');
 const diskTotalDs = ds('Total', '#66bb6a');
@@ -111,6 +114,7 @@ const load15Ds = ds('15m', '#5c6bc0');
 
 const cpuChart = makeChart('cpuChart', [cpuDs], { min: 0, max: 100 });
 const tempChart = makeChart('tempChart', [tempDs]);
+const fanChart = makeChart('fanChart', [fanDs], { min: 0, beginAtZero: true });
 const memChart = makeChart('memChart', [memTotalDs, memUsedDs], { min: 0 });
 const diskChart = makeChart('diskChart', [diskTotalDs, diskUsedDs], { min: 0 });
 const loadChart = makeChart('loadChart', [load1Ds, load5Ds, load15Ds], { min: 0 });
@@ -122,10 +126,10 @@ function parseCSV(text) {
     const p = line.split(',');
     return {
       t: new Date(p[0]),
-      cpu: +p[1], temp: +p[2],
-      memTotal: +p[3], memUsed: +p[4],
-      diskTotal: +p[5], diskUsed: +p[6],
-      load1: +p[7], load5: +p[8], load15: +p[9]
+      cpu: +p[1], temp: +p[2], fan: +p[3],
+      memTotal: +p[4], memUsed: +p[5],
+      diskTotal: +p[6], diskUsed: +p[7],
+      load1: +p[8], load5: +p[9], load15: +p[10]
     };
   });
 }
@@ -133,6 +137,7 @@ function parseCSV(text) {
 function updateStats(row) {
   document.getElementById('s-cpu').innerHTML = row.cpu + '<span class="unit">%</span>';
   document.getElementById('s-temp').innerHTML = row.temp + '<span class="unit">&deg;C</span>';
+  document.getElementById('s-fan').textContent = row.fan > 0 ? 'ON (' + row.fan + ')' : 'OFF';
   document.getElementById('s-mem').innerHTML = row.memUsed + '/' + row.memTotal + '<span class="unit">MB</span>';
   document.getElementById('s-disk').innerHTML = row.diskUsed + '/' + row.diskTotal + '<span class="unit">GB</span>';
   document.getElementById('s-load').textContent = row.load1;
@@ -142,6 +147,7 @@ function updateCharts(rows) {
   function pts(key) { return rows.map(r => ({ x: r.t, y: r[key] })); }
   cpuDs.data = pts('cpu');
   tempDs.data = pts('temp');
+  fanDs.data = pts('fan');
   memTotalDs.data = pts('memTotal');
   memUsedDs.data = pts('memUsed');
   diskTotalDs.data = pts('diskTotal');
@@ -149,7 +155,7 @@ function updateCharts(rows) {
   load1Ds.data = pts('load1');
   load5Ds.data = pts('load5');
   load15Ds.data = pts('load15');
-  [cpuChart, tempChart, memChart, diskChart, loadChart].forEach(c => c.update());
+  [cpuChart, tempChart, fanChart, memChart, diskChart, loadChart].forEach(c => c.update());
 }
 
 async function fetchData() {
