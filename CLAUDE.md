@@ -16,7 +16,9 @@ A lightweight Raspberry Pi system monitor that collects metrics (CPU usage, temp
 ## Key Paths
 
 - `RPI_STATUS_DATA_DIR` env var overrides default data dir (`/var/www/local/data`)
-- CSV format: `timestamp,cpu_percent,temp_c,fan_state,mem_total_mb,mem_used_mb,disk_total_gb,disk_used_gb,load_1m,load_5m,load_15m`
+- CSV format (23 columns): `timestamp,cpu_percent,temp_c,fan_state,mem_total_mb,mem_used_mb,swap_total_mb,swap_used_mb,disk_total_gb,disk_used_gb,docker_disk_gb,load_1m,load_5m,load_15m,net_rx_bytes,net_tx_bytes,ts_rx_bytes,ts_tx_bytes,uptime_sec,docker_running,docker_total,tailscale_up,cloudflared_up`
+- Network I/O columns are cumulative byte counters (from `/sys/class/net/*/statistics/`); the frontend converts them to per-interval MB deltas
+- Service health: tailscale_up and cloudflared_up are 1/0 flags
 - Archives go to `$DATA_DIR/archive/` (daily CSVs, `week-YYYY-Www.tar.gz`, `month-YYYY-MM.tar.gz`)
 
 ## Testing Locally

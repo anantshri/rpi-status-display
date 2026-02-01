@@ -11,11 +11,14 @@
   body { font-family: system-ui, sans-serif; background: #0f1117; color: #e0e0e0; padding: 1rem; }
   h1 { text-align: center; margin-bottom: 1.2rem; font-size: 1.4rem; }
 
-  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 0.75rem; margin-bottom: 1.5rem; }
-  .stat { background: #1a1d2e; border-radius: 8px; padding: 0.8rem 1rem; text-align: center; }
-  .stat .label { font-size: 0.75rem; color: #8888aa; text-transform: uppercase; letter-spacing: 0.05em; }
-  .stat .value { font-size: 2rem; font-weight: 700; margin-top: 0.2rem; line-height: 1.1; }
-  .stat .unit { font-size: 0.8rem; color: #666; font-weight: 400; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 0.6rem; margin-bottom: 1.5rem; }
+  .stat { background: #1a1d2e; border-radius: 8px; padding: 0.7rem 0.8rem; text-align: center; }
+  .stat .label { font-size: 0.7rem; color: #8888aa; text-transform: uppercase; letter-spacing: 0.05em; }
+  .stat .value { font-size: 1.6rem; font-weight: 700; margin-top: 0.15rem; line-height: 1.1; }
+  .stat .unit { font-size: 0.75rem; color: #666; font-weight: 400; }
+  .stat.ok .value { color: #66bb6a; }
+  .stat.warn .value { color: #ffa726; }
+  .stat.bad .value { color: #ef5350; }
 
   .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%,500px), 1fr)); gap: 1rem; }
   .card { background: #1a1d2e; border-radius: 8px; padding: 1rem; }
@@ -30,21 +33,31 @@
 <div id="error"></div>
 
 <div class="stats">
-  <div class="stat"><div class="label">CPU</div><div class="value" id="s-cpu">--<span class="unit">%</span></div></div>
-  <div class="stat"><div class="label">Temperature</div><div class="value" id="s-temp">--<span class="unit">&deg;C</span></div></div>
-  <div class="stat"><div class="label">Memory</div><div class="value" id="s-mem">--<span class="unit">MB</span></div></div>
-  <div class="stat"><div class="label">Disk</div><div class="value" id="s-disk">--<span class="unit">GB</span></div></div>
+  <div class="stat" id="sc-cpu"><div class="label">CPU</div><div class="value" id="s-cpu">--<span class="unit">%</span></div></div>
+  <div class="stat" id="sc-temp"><div class="label">Temp</div><div class="value" id="s-temp">--<span class="unit">&deg;C</span></div></div>
   <div class="stat"><div class="label">Fan</div><div class="value" id="s-fan">--</div></div>
+  <div class="stat"><div class="label">Memory</div><div class="value" id="s-mem">--<span class="unit">MB</span></div></div>
+  <div class="stat"><div class="label">Swap</div><div class="value" id="s-swap">--<span class="unit">MB</span></div></div>
+  <div class="stat"><div class="label">Disk</div><div class="value" id="s-disk">--<span class="unit">GB</span></div></div>
+  <div class="stat"><div class="label">Docker Disk</div><div class="value" id="s-ddisk">--<span class="unit">GB</span></div></div>
   <div class="stat"><div class="label">Load (1m)</div><div class="value" id="s-load">--</div></div>
+  <div class="stat"><div class="label">Containers</div><div class="value" id="s-docker">--</div></div>
+  <div class="stat"><div class="label">Uptime</div><div class="value" id="s-uptime">--</div></div>
+  <div class="stat" id="sc-ts"><div class="label">Tailscale</div><div class="value" id="s-ts">--</div></div>
+  <div class="stat" id="sc-cf"><div class="label">Cloudflared</div><div class="value" id="s-cf">--</div></div>
 </div>
 
 <div class="grid">
   <div class="card"><h2>CPU Usage (%)</h2><canvas id="cpuChart"></canvas></div>
-  <div class="card"><h2>Temperature (&deg;C)</h2><canvas id="tempChart"></canvas></div>
-  <div class="card"><h2>Fan State</h2><canvas id="fanChart"></canvas></div>
+  <div class="card"><h2>Temperature (&deg;C) &amp; Fan</h2><canvas id="tempChart"></canvas></div>
   <div class="card"><h2>Memory (MB)</h2><canvas id="memChart"></canvas></div>
+  <div class="card"><h2>Swap (MB)</h2><canvas id="swapChart"></canvas></div>
   <div class="card"><h2>Disk (GB)</h2><canvas id="diskChart"></canvas></div>
   <div class="card"><h2>Load Average</h2><canvas id="loadChart"></canvas></div>
+  <div class="card"><h2>Network I/O (MB)</h2><canvas id="netChart"></canvas></div>
+  <div class="card"><h2>Tailscale I/O (MB)</h2><canvas id="tsNetChart"></canvas></div>
+  <div class="card"><h2>Docker Containers</h2><canvas id="dockerChart"></canvas></div>
+  <div class="card"><h2>Services</h2><canvas id="svcChart"></canvas></div>
 </div>
 <div id="status">Loading&hellip;</div>
 
@@ -86,7 +99,6 @@ const commonOpts = {
 
 function makeChart(id, datasets, yOpts) {
   const opts = JSON.parse(JSON.stringify(commonOpts));
-  // tooltip callbacks don't survive JSON clone, re-attach
   opts.interaction = commonOpts.interaction;
   opts.plugins.tooltip = commonOpts.plugins.tooltip;
   if (yOpts) Object.assign(opts.scales.y, yOpts);
@@ -97,27 +109,50 @@ function makeChart(id, datasets, yOpts) {
   });
 }
 
-function ds(label, color) {
-  return { label, borderColor: color, backgroundColor: color + '22', data: [], pointRadius: 0, borderWidth: 1.5, fill: true, tension: 0.3 };
+function ds(label, color, extra) {
+  return Object.assign({ label, borderColor: color, backgroundColor: color + '22', data: [], pointRadius: 0, borderWidth: 1.5, fill: true, tension: 0.3 }, extra || {});
 }
 
+// Datasets
 const cpuDs = ds('CPU %', '#4fc3f7');
 const tempDs = ds('Temp', '#ff7043');
-const fanDs = ds('Fan', '#26c6da');
+const fanDs = ds('Fan', '#26c6da', { fill: false, borderWidth: 1, borderDash: [4,4], yAxisID: 'y1' });
 const memTotalDs = ds('Total', '#66bb6a');
 const memUsedDs = ds('Used', '#ef5350');
+const swapTotalDs = ds('Total', '#78909c');
+const swapUsedDs = ds('Used', '#ff8a65');
 const diskTotalDs = ds('Total', '#66bb6a');
 const diskUsedDs = ds('Used', '#ffa726');
 const load1Ds = ds('1m', '#ab47bc');
 const load5Ds = ds('5m', '#7e57c2');
 const load15Ds = ds('15m', '#5c6bc0');
+const netRxDs = ds('RX', '#4fc3f7');
+const netTxDs = ds('TX', '#ff7043');
+const tsRxDs = ds('RX', '#7c4dff');
+const tsTxDs = ds('TX', '#ff6e40');
+const dkRunDs = ds('Running', '#66bb6a');
+const dkTotalDs = ds('Total', '#78909c');
+const tsUpDs = ds('Tailscale', '#7c4dff', { stepped: true, fill: false });
+const cfUpDs = ds('Cloudflared', '#ff6e40', { stepped: true, fill: false });
 
+// Charts
 const cpuChart = makeChart('cpuChart', [cpuDs], { min: 0, max: 100 });
-const tempChart = makeChart('tempChart', [tempDs]);
-const fanChart = makeChart('fanChart', [fanDs], { min: 0, beginAtZero: true });
+
+// Temp chart with dual Y axis for fan
+const tempChartOpts = JSON.parse(JSON.stringify(commonOpts));
+tempChartOpts.interaction = commonOpts.interaction;
+tempChartOpts.plugins.tooltip = commonOpts.plugins.tooltip;
+tempChartOpts.scales.y1 = { position: 'right', ticks: { color: '#26c6da' }, grid: { display: false }, title: { display: true, text: 'Fan', color: '#26c6da' }, min: 0 };
+const tempChart = new Chart(document.getElementById('tempChart'), { type: 'line', data: { datasets: [tempDs, fanDs] }, options: tempChartOpts });
+
 const memChart = makeChart('memChart', [memTotalDs, memUsedDs], { min: 0 });
+const swapChart = makeChart('swapChart', [swapTotalDs, swapUsedDs], { min: 0 });
 const diskChart = makeChart('diskChart', [diskTotalDs, diskUsedDs], { min: 0 });
 const loadChart = makeChart('loadChart', [load1Ds, load5Ds, load15Ds], { min: 0 });
+const netChart = makeChart('netChart', [netRxDs, netTxDs], { min: 0 });
+const tsNetChart = makeChart('tsNetChart', [tsRxDs, tsTxDs], { min: 0 });
+const dockerChart = makeChart('dockerChart', [dkRunDs, dkTotalDs], { min: 0, ticks: { stepSize: 1 } });
+const svcChart = makeChart('svcChart', [tsUpDs, cfUpDs], { min: 0, max: 1.2, ticks: { stepSize: 1, callback: v => v === 1 ? 'UP' : v === 0 ? 'DOWN' : '' } });
 
 function parseCSV(text) {
   const lines = text.trim().split('\n');
@@ -128,19 +163,56 @@ function parseCSV(text) {
       t: new Date(p[0]),
       cpu: +p[1], temp: +p[2], fan: +p[3],
       memTotal: +p[4], memUsed: +p[5],
-      diskTotal: +p[6], diskUsed: +p[7],
-      load1: +p[8], load5: +p[9], load15: +p[10]
+      swapTotal: +p[6], swapUsed: +p[7],
+      diskTotal: +p[8], diskUsed: +p[9], dockerDisk: +p[10],
+      load1: +p[11], load5: +p[12], load15: +p[13],
+      netRx: +p[14], netTx: +p[15],
+      tsRx: +p[16], tsTx: +p[17],
+      uptime: +p[18],
+      dkRunning: +p[19], dkTotal: +p[20],
+      tsUp: +p[21], cfUp: +p[22]
     };
   });
 }
 
+function fmtUptime(sec) {
+  const d = Math.floor(sec / 86400);
+  const h = Math.floor((sec % 86400) / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  if (d > 0) return d + 'd ' + h + 'h';
+  if (h > 0) return h + 'h ' + m + 'm';
+  return m + 'm';
+}
+
+// Convert cumulative byte counters to per-interval MB deltas
+function toDeltaMB(rows, key) {
+  return rows.map((r, i) => {
+    if (i === 0) return { x: r.t, y: 0 };
+    const delta = r[key] - rows[i-1][key];
+    return { x: r.t, y: Math.max(0, +(delta / 1048576).toFixed(2)) };
+  });
+}
+
 function updateStats(row) {
-  document.getElementById('s-cpu').innerHTML = row.cpu + '<span class="unit">%</span>';
-  document.getElementById('s-temp').innerHTML = row.temp + '<span class="unit">&deg;C</span>';
-  document.getElementById('s-fan').textContent = row.fan > 0 ? 'ON (' + row.fan + ')' : 'OFF';
-  document.getElementById('s-mem').innerHTML = row.memUsed + '/' + row.memTotal + '<span class="unit">MB</span>';
-  document.getElementById('s-disk').innerHTML = row.diskUsed + '/' + row.diskTotal + '<span class="unit">GB</span>';
-  document.getElementById('s-load').textContent = row.load1;
+  const el = (id) => document.getElementById(id);
+  el('s-cpu').innerHTML = row.cpu + '<span class="unit">%</span>';
+  el('s-temp').innerHTML = row.temp + '<span class="unit">&deg;C</span>';
+  el('s-fan').textContent = row.fan > 0 ? 'ON (' + row.fan + ')' : 'OFF';
+  el('s-mem').innerHTML = row.memUsed + '/' + row.memTotal + '<span class="unit">MB</span>';
+  el('s-swap').innerHTML = row.swapUsed + '/' + row.swapTotal + '<span class="unit">MB</span>';
+  el('s-disk').innerHTML = row.diskUsed + '/' + row.diskTotal + '<span class="unit">GB</span>';
+  el('s-ddisk').innerHTML = row.dockerDisk + '<span class="unit">GB</span>';
+  el('s-load').textContent = row.load1;
+  el('s-docker').textContent = row.dkRunning + '/' + row.dkTotal;
+  el('s-uptime').textContent = fmtUptime(row.uptime);
+  el('s-ts').textContent = row.tsUp ? 'UP' : 'DOWN';
+  el('s-cf').textContent = row.cfUp ? 'UP' : 'DOWN';
+
+  // Color coding
+  el('sc-cpu').className = 'stat' + (row.cpu > 90 ? ' bad' : row.cpu > 70 ? ' warn' : ' ok');
+  el('sc-temp').className = 'stat' + (row.temp > 80 ? ' bad' : row.temp > 65 ? ' warn' : ' ok');
+  el('sc-ts').className = 'stat' + (row.tsUp ? ' ok' : ' bad');
+  el('sc-cf').className = 'stat' + (row.cfUp ? ' ok' : ' bad');
 }
 
 function updateCharts(rows) {
@@ -150,12 +222,22 @@ function updateCharts(rows) {
   fanDs.data = pts('fan');
   memTotalDs.data = pts('memTotal');
   memUsedDs.data = pts('memUsed');
+  swapTotalDs.data = pts('swapTotal');
+  swapUsedDs.data = pts('swapUsed');
   diskTotalDs.data = pts('diskTotal');
   diskUsedDs.data = pts('diskUsed');
   load1Ds.data = pts('load1');
   load5Ds.data = pts('load5');
   load15Ds.data = pts('load15');
-  [cpuChart, tempChart, fanChart, memChart, diskChart, loadChart].forEach(c => c.update());
+  netRxDs.data = toDeltaMB(rows, 'netRx');
+  netTxDs.data = toDeltaMB(rows, 'netTx');
+  tsRxDs.data = toDeltaMB(rows, 'tsRx');
+  tsTxDs.data = toDeltaMB(rows, 'tsTx');
+  dkRunDs.data = pts('dkRunning');
+  dkTotalDs.data = pts('dkTotal');
+  tsUpDs.data = pts('tsUp');
+  cfUpDs.data = pts('cfUp');
+  [cpuChart, tempChart, memChart, swapChart, diskChart, loadChart, netChart, tsNetChart, dockerChart, svcChart].forEach(c => c.update());
 }
 
 async function fetchData() {
