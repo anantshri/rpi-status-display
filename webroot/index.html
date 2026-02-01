@@ -9,7 +9,14 @@
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: system-ui, sans-serif; background: #0f1117; color: #e0e0e0; padding: 1rem; }
-  h1 { text-align: center; margin-bottom: 1rem; font-size: 1.4rem; }
+  h1 { text-align: center; margin-bottom: 1.2rem; font-size: 1.4rem; }
+
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 0.75rem; margin-bottom: 1.5rem; }
+  .stat { background: #1a1d2e; border-radius: 8px; padding: 0.8rem 1rem; text-align: center; }
+  .stat .label { font-size: 0.75rem; color: #8888aa; text-transform: uppercase; letter-spacing: 0.05em; }
+  .stat .value { font-size: 2rem; font-weight: 700; margin-top: 0.2rem; line-height: 1.1; }
+  .stat .unit { font-size: 0.8rem; color: #666; font-weight: 400; }
+
   .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%,500px), 1fr)); gap: 1rem; }
   .card { background: #1a1d2e; border-radius: 8px; padding: 1rem; }
   .card h2 { font-size: 0.9rem; margin-bottom: 0.5rem; color: #8888aa; }
@@ -21,6 +28,15 @@
 <body>
 <h1>Raspberry Pi Status</h1>
 <div id="error"></div>
+
+<div class="stats">
+  <div class="stat"><div class="label">CPU</div><div class="value" id="s-cpu">--<span class="unit">%</span></div></div>
+  <div class="stat"><div class="label">Temperature</div><div class="value" id="s-temp">--<span class="unit">&deg;C</span></div></div>
+  <div class="stat"><div class="label">Memory</div><div class="value" id="s-mem">--<span class="unit">MB</span></div></div>
+  <div class="stat"><div class="label">Disk</div><div class="value" id="s-disk">--<span class="unit">GB</span></div></div>
+  <div class="stat"><div class="label">Load (1m)</div><div class="value" id="s-load">--</div></div>
+</div>
+
 <div class="grid">
   <div class="card"><h2>CPU Usage (%)</h2><canvas id="cpuChart"></canvas></div>
   <div class="card"><h2>Temperature (&deg;C)</h2><canvas id="tempChart"></canvas></div>
@@ -37,11 +53,28 @@ const REFRESH_MS = 5 * 60 * 1000;
 const commonOpts = {
   responsive: true,
   animation: false,
-  plugins: { legend: { labels: { color: '#aaa', font: { size: 11 } } } },
+  interaction: { mode: 'index', intersect: false },
+  plugins: {
+    legend: { labels: { color: '#aaa', font: { size: 11 } } },
+    tooltip: {
+      backgroundColor: '#1a1d2e',
+      titleColor: '#e0e0e0',
+      bodyColor: '#ccc',
+      borderColor: '#333',
+      borderWidth: 1,
+      padding: 10,
+      callbacks: {
+        title: function(items) {
+          if (!items.length) return '';
+          return new Date(items[0].parsed.x).toLocaleString();
+        }
+      }
+    }
+  },
   scales: {
     x: {
       type: 'time',
-      time: { tooltipFormat: 'HH:mm', displayFormats: { minute: 'HH:mm', hour: 'HH:mm' } },
+      time: { tooltipFormat: 'yyyy-MM-dd HH:mm', displayFormats: { minute: 'HH:mm', hour: 'HH:mm' } },
       ticks: { color: '#666', maxTicksLimit: 12 },
       grid: { color: '#222' }
     },
@@ -51,6 +84,9 @@ const commonOpts = {
 
 function makeChart(id, datasets, yOpts) {
   const opts = JSON.parse(JSON.stringify(commonOpts));
+  // tooltip callbacks don't survive JSON clone, re-attach
+  opts.interaction = commonOpts.interaction;
+  opts.plugins.tooltip = commonOpts.plugins.tooltip;
   if (yOpts) Object.assign(opts.scales.y, yOpts);
   return new Chart(document.getElementById(id), {
     type: 'line',
@@ -94,6 +130,14 @@ function parseCSV(text) {
   });
 }
 
+function updateStats(row) {
+  document.getElementById('s-cpu').innerHTML = row.cpu + '<span class="unit">%</span>';
+  document.getElementById('s-temp').innerHTML = row.temp + '<span class="unit">&deg;C</span>';
+  document.getElementById('s-mem').innerHTML = row.memUsed + '/' + row.memTotal + '<span class="unit">MB</span>';
+  document.getElementById('s-disk').innerHTML = row.diskUsed + '/' + row.diskTotal + '<span class="unit">GB</span>';
+  document.getElementById('s-load').textContent = row.load1;
+}
+
 function updateCharts(rows) {
   function pts(key) { return rows.map(r => ({ x: r.t, y: r[key] })); }
   cpuDs.data = pts('cpu');
@@ -113,6 +157,7 @@ async function fetchData() {
     const res = await fetch(DATA_URL + '?_=' + Date.now());
     if (!res.ok) throw new Error(res.status);
     const rows = parseCSV(await res.text());
+    if (rows.length) updateStats(rows[rows.length - 1]);
     updateCharts(rows);
     document.getElementById('error').style.display = 'none';
     document.getElementById('status').textContent = 'Last updated: ' + new Date().toLocaleTimeString() + ' (' + rows.length + ' points)';
